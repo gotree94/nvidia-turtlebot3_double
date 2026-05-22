@@ -1,0 +1,94 @@
+# ============================================
+# Isaac Sim + Isaac Lab + ROS2 Humble Dockerfile
+# ============================================
+# Build:
+#   docker build -f docker/Dockerfile.isaac -t isaac-lab:latest .
+# ============================================
+
+FROM nvcr.io/nvidia/isaac-sim:2025.2.0
+
+LABEL description="NVIDIA Isaac Lab + ROS2 Humble for TurtleBot3"
+LABEL maintainer="nvidia-turtlebot-project"
+
+# ========== Environment ==========
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV ROS_DOMAIN_ID=42
+
+# ========== System Dependencies ==========
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    vim \
+    python3-pip \
+    python3-venv \
+    python3-colcon-common-extensions \
+    python3-argcomplete \
+    software-properties-common \
+    build-essential \
+    cmake \
+    libeigen3-dev \
+    libboost-all-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========== ROS2 Humble ==========
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ros-humble-desktop \
+        ros-humble-navigation2 \
+        ros-humble-nav2-bringup \
+        ros-humble-slam-toolbox \
+        ros-humble-turtlebot3* \
+        ros-humble-robot-localization \
+        ros-humble-teleop-twist-keyboard \
+        ros-humble-xacro \
+        ros-humble-rviz2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Source ROS2 in bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+RUN echo "export ROS_DOMAIN_ID=42" >> ~/.bashrc
+RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
+
+# ========== Python Packages ==========
+RUN pip3 install --upgrade pip && pip3 install --no-cache-dir \
+    torch>=2.1.0 \
+    tensorboard \
+    wandb \
+    gymnasium \
+    hydra-core \
+    pyyaml \
+    numpy \
+    matplotlib \
+    opencv-python \
+    pillow
+
+# ========== Isaac Lab ==========
+WORKDIR /workspace
+RUN git clone https://github.com/isaac-sim/IsaacLab.git /workspace/IsaacLab \
+    && cd /workspace/IsaacLab \
+    && ln -s /isaac-sim /workspace/.isaac_sim \
+    && ./isaaclab.sh --install
+
+# ========== TurtleBot3 Workspace ==========
+RUN mkdir -p /workspace/tb3_ws/src \
+    && cd /workspace/tb3_ws/src \
+    && git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3.git \
+    && git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3_msgs.git \
+    && git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3_simulations.git \
+    && cd /workspace/tb3_ws \
+    && colcon build --symlink-install
+
+RUN echo "source /workspace/tb3_ws/install/setup.bash" >> ~/.bashrc
+RUN echo "export TURTLEBOT3_MODEL=burger" >> ~/.bashrc
+
+# ========== Workspace Mount Point ==========
+VOLUME ["/workspace"]
+
+# ========== Entrypoint ==========
+WORKDIR /workspace
+ENTRYPOINT ["/bin/bash"]

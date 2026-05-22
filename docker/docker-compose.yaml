@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  isaac-sim:
+    image: nvcr.io/nvidia/isaac-sim:2025.2.0
+    container_name: isaac-sim-ws
+    runtime: nvidia
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+      - OMNI_USER=admin
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ../:/workspace:rw
+      - ~/.nvidia-omniverse:/root/.nvidia-omniverse:rw
+      - ~/.cache/ov:/root/.cache/ov:rw
+      - /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
+    network_mode: host
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    stdin_open: true
+    tty: true
+    command: /bin/bash -c "source /opt/ros/humble/setup.bash && cd /workspace && exec bash"
+
+  isaac-lab:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.isaac
+    image: isaac-lab-turtlebot:latest
+    container_name: isaac-lab-ws
+    runtime: nvidia
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    volumes:
+      - ../:/workspace:rw
+      - ~/.cache:/root/.cache:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    stdin_open: true
+    tty: true
+    command: /bin/bash -c "source /opt/ros/humble/setup.bash && source /workspace/tb3_ws/install/setup.bash && cd /workspace && exec bash"

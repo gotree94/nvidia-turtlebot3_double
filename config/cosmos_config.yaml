@@ -1,0 +1,74 @@
+# ============================================
+# Cosmos Integration Configuration
+# ============================================
+
+paths:
+  cosmos_home: "~/Cosmos"
+  isaac_output: "/workspace/_out_cosmos_turtlebot"
+  transfer_output: "/workspace/data/cosmos_transferred"
+  training_output: "/workspace/outputs/cosmos_policy_turtlebot"
+  policy_onnx: "/workspace/outputs/policy_turtlebot.onnx"
+  policy_tensorrt: "/workspace/outputs/policy_turtlebot.plan"
+  cache_dir: "~/.cache/cosmos/models"
+
+models:
+  predict: "Cosmos-Predict2-2B-Video2World"
+  predict_v2: "Cosmos-Predict2.5-2B-Video2World"
+  transfer: "Cosmos-Transfer1-7B"
+  reason: "Cosmos-Reason"
+
+data_collection:
+  num_clips: 10
+  num_frames_per_clip: 60
+  capture_interval: 5
+  resolution_width: 1280
+  resolution_height: 720
+  camera_focal_length: 24.0  # mm
+  
+  # 데이터 저장 모드
+  modalities:
+    - rgb
+    - depth
+    - segmentation
+    - shaded_seg
+    - edges
+  
+  # 웨어하우스 환경
+  environment: "warehouse"
+  num_obstacles: 8
+
+transfer:
+  model_path: "~/.cache/cosmos/models/Cosmos-Transfer1-7B"
+  condition_type: "canny_edge"
+  num_frames: 32
+  fps: 8
+  batch_size: 1
+  mixed_precision: "fp16"
+
+training:
+  base_model: "Cosmos-Predict2-2B-Video2World"
+  context_frames: 4
+  future_frames: 12
+  action_dim: 2
+  
+  batch_size: 4
+  learning_rate: 1.0e-5
+  num_epochs: 100
+  gradient_accumulation_steps: 8
+  mixed_precision: "fp16"
+  
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  
+  logging:
+    log_interval: 10
+    save_interval: 500
+    eval_interval: 100
+
+inference:
+  device: "cuda"
+  max_linear_velocity: 0.22
+  max_angular_velocity: 2.84
+  observation_dim: 39
+  context_frames: 4
