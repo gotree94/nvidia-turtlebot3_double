@@ -142,7 +142,7 @@ nvidia-turtlebos3_double/
 
 | 구성 요소 | 최소 사양 | 권장 사양 | 보유 현황 🖥️ |
 |-----------|-----------|-----------|---------------|
-| **GPU** | NVIDIA RTX 3060 (12GB) | **NVIDIA RTX 4090 (24GB)** | **RTX 5090 24GB** ✅ |
+| **GPU** | NVIDIA RTX 3060 (12GB) | **NVIDIA RTX 4090 (24GB)** | **NVIDIA RTX 5090 (24GB)** ✅ |
 | **CPU** | Intel i7-12xxx / AMD Ryzen 7 | Intel i9 / AMD Ryzen 9 | Core Ultra 9 ✅ |
 | **RAM** | 32GB | **64GB** | **64GB** ✅ |
 | **Storage** | 100GB | 500GB NVMe SSD | **4TB** ✅ |
