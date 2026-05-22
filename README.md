@@ -149,9 +149,9 @@ nvidia-turtlebos3_double/
 | **OS** | **Ubuntu 22.04 LTS** | Ubuntu 22.04 LTS | Ubuntu 22.04 LTS ✅ |
 | **Docker** | 24+ | 24+ | - |
 
-> **보유 장비**: ASUS 2025 ROG Strix SCAR 16 (코어 Ultra 9, RTX 5090 24GB, 4TB, 32GB, Ubuntu 22.04 LTS)
+> **보유 장비**: ASUS 2025 ROG Strix SCAR 16 (코어 Ultra 9, NVIDIA RTX 5090 24GB, 4TB, 64GB, Ubuntu 22.04 LTS)
 >
-> ⚠️ **RAM 32GB**는 Isaac Lab 대규모 병렬 학습(256 env) 시 부족할 수 있습니다. `--num_envs 64`로 조정하거나 SWAP을 활용하세요. RTX 5090 24GB는 권장 사양을 상회하므로 GPU 병목은 없습니다.
+> ⚠️ 만약 **RAM 32GB**는 Isaac Lab 대규모 병렬 학습(256 env) 시 부족할 수 있습니다. `--num_envs 64`로 조정하거나 SWAP을 활용하세요. RTX 5090 24GB는 권장 사양을 상회하므로 GPU 병목은 없습니다.
 
 ### 2. 설치 개요
 
