@@ -1,8 +1,8 @@
-# IsaacSim TurtleBot3 ROS2 Tutorial
+# IsaacSim TurtleBot3 ROS2 Tutorial (turtlebot3 불러오고 ROS2 연결)
 
-안녕하세요, 이번시간에는 ROS의 대표적인 예제인 turtlesim 대신 isaacsim에서 turtlebot을 불러오고 turtlesim 제어처럼 터미널로 제어를 해보도록 하겠습니다.
-
-이를 위해 IsaacSim과 ROS2를 연결하겠습니다.
+* 이번시간에는 ROS의 대표적인 예제인 turtlesim 대신 isaacsim에서 turtlebot을 불러오고
+* turtlesim 제어처럼 터미널로 제어를 해보도록 하겠습니다.
+* 이를 위해 IsaacSim과 ROS2를 연결하겠습니다.
 
 > **참고 링크**: https://docs.omniverse.nvidia.com/isaacsim/latest/ros2_tutorials/tutorial_ros2_turtlebot.html
 
