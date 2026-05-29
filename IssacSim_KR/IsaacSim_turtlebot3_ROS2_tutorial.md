@@ -39,7 +39,7 @@ cd ~/IsaacSim-ros_workspaces/humble_ws/src
 이 위치에서 turtlebot3 소스 클론:
 
 ```bash
-git clone -b humble-devel https://github.com/ROBOTIS-GIT/turtlebot3.git turtlebot3
+git clone -b humble https://github.com/ROBOTIS-GIT/turtlebot3.git turtlebot3
 ```
 
 #### Isaac Sim에서 Simple Room 불러오기
