@@ -10,8 +10,8 @@
 
 ## 1. URDF Import: Turtlebot
 
-Omniverse Isaac Sim에는 ROS 시스템과의 통합을 용이하게 해주는 여러 도구가 있습니다.
-Isaac Sim에는 Omnigraph 노드 형태의 ROS와 ROS2 브리지, URDF 임포터, 그리고 Gazebo/Ignition에 대한 연결을 모두 갖추고 있습니다.
+* Omniverse Isaac Sim에는 ROS 시스템과의 통합을 용이하게 해주는 여러 도구가 있습니다.
+* Isaac Sim에는 Omnigraph 노드 형태의 ROS와 ROS2 브리지, URDF 임포터, 그리고 Gazebo/Ignition에 대한 연결을 모두 갖추고 있습니다.
 
 ### 학습 목표
 
