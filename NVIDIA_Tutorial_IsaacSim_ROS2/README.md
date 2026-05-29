@@ -489,6 +489,399 @@ Congratulations, your robot and policy are working correctly in Isaac Sim now an
 
 Please read this article on [deploying a reinforcement learning policy to a Spot robot](https://devblogs.nvidia.com/deploying-robust-locomotion-policies-to-a-real-robot/).
 
+# Running a Reinforcement Learning Policy through ROS 2 and Isaac Sim
+
+## Learning Objectives
+
+In this example, you learn to run a reinforcement learning policy through ROS 2 and Isaac Sim. You will learn to:
+
+- Setup a ROS 2 node to publish observations and receive actions from Isaac Sim for the H1 flat terrain locomotion policy
+- Setup Isaac Sim environment to run a reinforcement learning policy
+
+---
+
+## Getting Started
+
+### Prerequisite
+
+- The `torch` package is required to run this sample. Follow the [PyTorch installation instructions](https://pytorch.org/get-started/locally/) to install it (if not already installed). Since PyTorch will run on a separate process, no specific version is required (it doesn't have to match Isaac Sim's PyTorch version).
+- Enable the `isaacsim.ros2.bridge` Extension in the Extension Manager window by navigating to **Window > Extensions**.
+- This tutorial requires the `h1_fullbody_controller` ROS 2 package, which is provided in the [IsaacSim-ros_workspaces repo](https://github.com/NVIDIA-Omniverse/IsaacSim-ros_workspaces/tree/main/ros2_workspace). Complete [ROS 2 Installation](https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_ros.html) to make sure the ROS 2 workspace environment is setup correctly.
+- This tutorial requires the completion of [Tutorial 13: Rigging a Legged Robot for Locomotion Policy](https://docs.omniverse.nvidia.com/isaacsim/latest/tutorials/rigging_legged_robot.html) to setup the robot joint configurations based on the locomotion policy parameter, see the section below.
+
+> **Hint**
+> - If you encounter error: `externally-managed-environment` when installing PyTorch, try installing it in a virtual Python environment.
+> - If you encounter `ModuleNotFoundError: No module named 'yaml'`, install PyYaml using pip.
+
+---
+
+## About the H1 Flat Terrain Locomotion Policy
+
+The policy is trained based on the `Isaac-Velocity-Flat-H1-v0` environment from Isaac Lab. This policy tracks a velocity command on a flat terrain for the H1 humanoid robot. The policy is capable of walking forward and turning left/right. The policy does **not** support moving backwards nor sideways.
+
+---
+
+## Set Up Robot Joint Configurations
+
+Follow the steps in [Tutorial 13: Rigging a Legged Robot for Locomotion Policy](https://docs.omniverse.nvidia.com/isaacsim/latest/tutorials/rigging_legged_robot.html) to setup the robot joint configurations based on the locomotion policy parameter. This step is very important, because mismatching the joint configurations can result in unexpected robot behavior.
+
+The H1 flat terrain policy environment definition file is in YAML format.
+
+The angle units specified in the policy environment definition file are in **radians**. The Isaac Sim USD GUI interface expects the angles to be specified in **degrees**.
+
+The rigged H1 robot is available in the content browser at `Isaac/Samples/Rigging/H1/h1_rigged.usd`.
+
+---
+
+## Add IMU Sensor
+
+Use the IMU sensor to obtain the body frame linear acceleration, angular velocity, and orientation. The flat terrain policy requires the linear velocity, angular velocity, and gravity vector from the pelvis link. You need to add an IMU sensor to the pelvis link to compute these values.
+
+You can create an IMU sensor by right clicking on the `/h1/pelvis` and select **Create > Isaac > Sensors > Imu Sensor**.
+
+> **Warning**
+> If you add the IMU to a different link, for example, the torso link, you must first transform the IMU data to the pelvis link frame before using it in the policy.
+
+---
+
+## Set up ROS 2 Node for the H1 Humanoid Robot
+
+The ROS 2 node publishes the observations and receives the actions from Isaac Sim. As specified in the environment definition file, the observations requires the following information:
+
+- Body frame linear velocity
+- Body frame angular velocity
+- Body frame gravity vector
+- Command (linear and angular velocity)
+- Relative joint position
+- Relative joint velocity
+- Previous Action
+
+You can obtain the body frame linear velocity, angular velocity, and gravity vector from processing the IMU data. The command is the desired linear and angular velocity of the robot, which can be retrieved from a ROS 2 twist message. The relative joint position and velocity can be computed from the Isaac Sim joint state topic. The previous action is the action applied last iteration and can be tracked by the policy node.
+
+The action is a joint state message, which is a dictionary of joint names and their desired positions.
+
+In this section, we will setup OmniGraph nodes that publishes the observations and receives the actions from Isaac Sim on physics step.
+
+### Create an On Demand OmniGraph
+
+1. Open the H1 Unitree robot model that you rigged in the [Tutorial 13: Rigging a Legged Robot for Locomotion Policy](https://docs.omniverse.nvidia.com/isaacsim/latest/tutorials/rigging_legged_robot.html) tutorial.
+2. Create a scope to hold the ActionGraphs by right clicking on the stage and selecting **Create > Scope**, rename it "Graph".
+3. Right click on the stage and select **Create > Visual Scripting > ActionGraph**.
+4. Rename the ActionGraph to "ROS_Imu", drag and drop this ActionGraph into the "Graph" scope.
+5. Left click on the ActionGraph node, scroll down in the property editor and set the `pipelineStage` to `pipelineStageOnDemand`.
+
+This will ensure the ActionGraph node runs when the Isaac Sim physics steps.
+
+### Create Imu Publisher Node
+
+This node publishes the IMU data to ROS 2, which contains the body frame linear acceleration, angular velocity, and orientation.
+
+1. Right click on the actionGraph node and select **Open Graph**.
+2. Copy the following nodes into the Action graph:
+   - **On Physics Step**: This node is triggered when the Isaac Sim physics steps, and runs the entire graph.
+   - **ROS2 Context**: This node creates a context for the ROS 2 node.
+   - **ROS2 QoS Profile**: This node sets the QoS profile for the ROS 2 node.
+   - **Isaac Read IMU Node**: This node reads the IMU data from Isaac Sim.
+   - **Isaac Read Simulation Time**: This node reads the simulation time from Isaac Sim.
+   - **ROS2 Publish IMU**: This node publishes the IMU data to ROS 2 using the Isaac Read IMU Node and Isaac Read Simulation Time nodes as source.
+3. Connect the nodes as shown in the image below.
+4. Set the Isaac Read IMU Node input `IMU Prim` to `/h1/pelvis/Imu_Sensor` to read the IMU sensor data.
+5. Uncheck input `Read Gravity` of the Isaac Read IMU Node to avoid reading the gravity vector from the pelvis link. This is because we only want the linear and angular velocity from the pelvis link.
+6. Check the `Reset on Stop` input of Read Simulation Time node to reset the simulation time when the simulation stops.
+
+### Create Joint State Publisher and Subscriber Nodes
+
+This node publishes the joint states to ROS 2, which contains the joint names, positions, and velocities, and subscribes to the joint state commands from Isaac Sim.
+
+1. Create a new ActionGraph node and rename it to "ROS_Joint_States".
+2. Set the `pipelineStage` to `pipelineStageOnDemand`.
+3. Copy the following nodes into the Action graph:
+   - **On Physics Step**: This node is triggered when the Isaac Sim physics steps, and runs the entire graph.
+   - **ROS2 Context**: This node creates a context for the ROS 2 node.
+   - **ROS2 QoS Profile**: This node sets the QoS profile for the ROS 2 node.
+   - **ROS2 Subscribe Joint State**: This node subscribes to the joint states commands from the external policy node.
+   - **ROS2 Publish Joint State**: This node publishes the current joint states to ROS 2 from Isaac Sim.
+   - **Isaac Read Simulation Time**: This node reads the simulation time from Isaac Sim.
+   - **Articulation Controller**: This node will execute the joint state commands from the Subscribe Joint States node.
+4. Connect the nodes as shown in the image below.
+5. Set the ROS2 Publish Joint State input `Target Prim` to `/h1`, and `Topic Name` to `/joint_states`.
+6. Set the ROS2 Subscribe Joint State input `Topic Name` to `/joint_command`.
+7. Set the Articulation Controller input `Target Prim` to `/h1`.
+8. Check the `Reset on Stop` input of Read Simulation Time node to reset the simulation time when the simulation stops.
+
+> **Note**
+> The completed asset is available in the content browser at `Isaac Sim/Samples/ROS2/Robots/h1_ROS.usd`.
+
+---
+
+## Publish ROS Clock and Set Up Environment
+
+Now that the asset is set up, create a simulation scenario to place the robot in, configure the physics settings, and ROS time publish.
+
+### Setup Simulation Scenario
+
+1. Create a new file. In the Content Browser, go to `Isaac Sim/Environments/Simple_Warehouse` and drag the `warehouse.usd` asset into the stage.
+2. Drag and drop the `h1_ROS.usd` asset that you made earlier into the stage. Set the Z transform to 1.0 so it is above the ground.
+3. Create a Physics Scene by right clicking on the stage and selecting **Create > Physics > Physics Scene**.
+4. Select the Physics Scene and set **Time Steps Per Second** to 200.
+5. Because you only have one robot, use CPU physics for better performance:
+   - Uncheck **Enable GPU Dynamics**
+   - Set the **Broadphase Type** to MBP
+
+### Setup ROS 2 Clock Publisher
+
+1. Create a new ActionGraph node and rename it to "ROS_Clock".
+2. Set the `pipelineStage` to `pipelineStageOnDemand`.
+3. Copy the following nodes into the Action graph:
+   - **On Physics Step**: This node is triggered when the Isaac Sim physics steps, and runs the entire graph.
+   - **ROS2 Context**: This node creates a context for the ROS 2 node.
+   - **ROS2 QoS Profile**: This node sets the QoS profile for the ROS 2 node.
+   - **ROS2 Publish Clock**: This node publishes the ROS 2 clock to ROS 2.
+   - **Read Simulation Time**: This node reads the simulation time from Isaac Sim.
+4. Connect the nodes as shown in the image below.
+5. Check the `Reset on Stop` input of Read Simulation Time node to reset the simulation time when the simulation stops.
+
+> **Note**
+> The completed environment is available in the content browser at `Isaac Sim/Samples/ROS2/Scenario/h1_ros_locomotion_policy_tutorial.usd`.
+
+---
+
+## Run ROS 2 Policy
+
+The asset is set up, you can run the ROS 2 policy. Build the ROS 2 workspace and source the `setup.bash` file.
+
+Launch the `h1_fullbody_controller` ROS 2 package by running the following command in the environment with PyTorch installed:
+
+```bash
+ros2 launch h1_fullbody_controller h1_fullbody_controller.launch.py
+```
+
+> **Note**
+> This ROS 2 package computes observations and actions using the ROS messages that you published above and the flat terrain locomotion policy. When no command velocities are received, the robot will stand still and maintain balance. Make sure to start the ROS 2 policy **before** starting the simulation, otherwise the robot will fall over.
+
+1. Open the H1 scenario you created earlier and press **PLAY** to start the simulation.
+2. In a separate terminal, source ROS and launch `teleop_twist_keyboard` or another desired package to publish Twist messages:
+
+```bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+You can now control the H1 humanoid robot using your keyboard. Try the controls and observe if the robot moves as expected.
+
+| Action | Key |
+|--------|-----|
+| Forward | `i` |
+| Forward + Turn Left | `u` |
+| Forward + Turn Right | `o` |
+| Turn Left | `j` |
+| Turn Right | `l` |
+| Stand Still | `k` |
+
+> **Important**
+> - Moving backwards is not supported in this version of the policy. Pressing `m`, `,`, `.` key will cause the robot to fall over.
+> - Setting linear and angular velocity above 0.75 exceeds the velocity limits of the policy and will cause the robot to fall over.
+> - The robot might drift over time when there's no command velocities. This is expected behavior.
+
+---
+
+## Summary
+
+This tutorial covered:
+
+- Creating and setting up a ROS 2 node to publish observations and receive actions from Isaac Sim for the H1 flat terrain locomotion policy.
+- Setting up Isaac Sim environment to run a reinforcement learning policy.
+
+---
+
+# Instanceable Assets
+
+Reinforcement learning often requires training in large simulation scenes with multiple clones of the same robots. As we add more and more robots into the simulation environment, the memory consumption also increases for each additional set of robot and mesh assets added. To reduce memory consumption, we can take advantage of USD's Scenegraph Instancing functionality to mark common meshes shared by different copies of the same robots as instanceable.
+
+By doing so, each copy of the robot will reference a single copy of meshes, avoiding the need to create multiple copies of the same meshes in the scene, thus reducing memory usage in the overall simulation environment.
+
+## Learning Objectives
+
+In this tutorial, we will show how to create instanceable assets in Isaac Sim. We will:
+
+- Explain requirements for making assets instanceable
+- Use the URDF and MJCF importers to create instanceable assets
+- Show utility methods to convert existing assets to instanceable assets
+
+*10-15 Minute Tutorial*
+
+## Getting Started
+
+Please refer to [USD Documentation on Scenegraph Instancing](https://graphics.pixar.com/usd/release/glossary.html#usdglossary-instancing) for more details on instancing.
+
+Please refer to [Tutorial: Import URDF](https://docs.omniverse.nvidia.com/isaacsim/latest/ros2_tutorials/tutorial_ros2_urdf_import.html) and [Tutorial: Import MJCF](https://docs.omniverse.nvidia.com/isaacsim/latest/tutorials/import_mjcf.html) for more details on importer functionalities.
+
+## Hierarchy Requirement for Instanceable Assets
+
+USD prohibits modifying properties of prims on descendants of instanced prims. Therefore, we generally only perform instancing on mesh prims for robot assets, since properties on meshes will not differ across different environments during simulation. However, the transforms of the meshes may be different during simulation when robots in each environment are being moved in varying ways. Thus, we have to define the topology of our robot hierarchy in a specific structure in the asset tree definition in order for the instanceable flag to take action.
+
+To mark any mesh or primitive geometry prim in the asset as instanceable, the mesh prim requires a parent Xform prim to be present, which will be used to add a reference to a master USD file containing definition of the mesh prim.
+
+For example, the following definition **cannot** be marked instanceable:
+
+```
+World
+  |_ Robot
+       |_ Collisions
+               |_ Sphere
+               |_ Box
+```
+
+Instead, it will have to be modified to:
+
+```
+World
+  |_ Robot
+       |_ Collisions
+               |_ Sphere_Xform
+               |      |_ Sphere
+               |_ Box_Xform
+                      |_ Box
+```
+
+Any references that exist on the original Sphere and Box prims would have to be moved to `Sphere_Xform` and `Box_Xform` prims.
+
+## Using URDF and MJCF Importers
+
+Isaac Sim provides two importers — URDF and MJCF — for converting robot assets to USD format to be used in Isaac Sim. Both importers support the option to import robot assets directly as instanceable assets. By selecting this option, imported assets will be split into two separate USD files that follow the above hierarchy definition. Any mesh data will be written to a USD stage to be referenced by the main USD stage, which contains the main robot definition.
+
+To use the Instanceable option in the importers:
+
+1. First check the **Create Instanceable Asset** option.
+2. Then, specify a file path to indicate the location for saving the mesh data in the **Instanceable USD Path** textbox. This will default to `./instanceable_meshes.usd`, which will generate a file `instanceable_meshes.usd` that is saved to the current directory.
+
+Once the asset is imported with these options enabled, you will see the robot definition in the stage — we will refer to this stage as the **master stage**. If we expand the robot hierarchy in the Stage, we will notice that the parent prims that have mesh descendants have been marked as Instanceable and they reference a prim in our Instanceable USD Path USD file. We are also no longer able to modify attributes of descendant meshes.
+
+To add our instanced asset into a new stage, we will simply need to add our master USD file.
+
+## Modifying Existing Assets
+
+Due to limitations of the topology requirement for making assets instanceable, it is not as straightforward to convert existing non-instanceable assets to become instanceable. Here, we will try to provide a few small utility methods to help make the process simpler.
+
+All utilities should be copied into and run from the Script Editor, which can be opened from **Window > Script Editor**.
+
+### Creating Parent Xforms
+
+First, we need to make sure our existing asset follows the hierarchy constraint defined above, where all mesh prims have a parent XForm prim present that can be used to mark the prim as instanceable. To help with the process of creating new parent prims, we provide a utility method `create_parent_xforms()` below to automatically insert a new Xform prim as a parent of every mesh prim in the stage.
+
+```python
+import omni.usd
+import omni.client
+
+from pxr import UsdGeom, Sdf
+
+def create_parent_xforms(asset_usd_path, source_prim_path, save_as_path=None):
+    """ Adds a new UsdGeom.Xform prim for each Mesh/Geometry prim under source_prim_path.
+        Moves material assignment to new parent prim if any exists on the Mesh/Geometry prim.
+
+        Args:
+            asset_usd_path (str): USD file path for asset
+            source_prim_path (str): USD path of root prim
+            save_as_path (str): USD file path for modified USD stage. Defaults to None, will save in same file.
+    """
+    omni.usd.get_context().open_stage(asset_usd_path)
+    stage = omni.usd.get_context().get_stage()
+
+    prims = [stage.GetPrimAtPath(source_prim_path)]
+    edits = Sdf.BatchNamespaceEdit()
+    while len(prims) > 0:
+        prim = prims.pop(0)
+        print(prim)
+        if prim.GetTypeName() in ["Mesh", "Capsule", "Sphere", "Box"]:
+            new_xform = UsdGeom.Xform.Define(stage, str(prim.GetPath()) + "_xform")
+            print(prim, new_xform)
+            edits.Add(Sdf.NamespaceEdit.Reparent(prim.GetPath(), new_xform.GetPath(), 0))
+            continue
+
+        children_prims = prim.GetChildren()
+        prims = prims + children_prims
+
+    stage.GetRootLayer().Apply(edits)
+
+    if save_as_path is None:
+        omni.usd.get_context().save_stage()
+    else:
+        omni.usd.get_context().save_as_stage(save_as_path)
+```
+
+This method can be run on an existing non-instanced USD file for an asset from the script editor, where:
+
+- `asset_usd_path` is the file path to the current existing USD asset
+- `source_prim_path` is the USD prim path to the root prim of the asset
+- `save_as_path` is a different file path to save the modified asset to. This can be left unspecified to overwrite the existing file.
+
+```python
+create_parent_xforms(
+    asset_usd_path=ASSET_USD_PATH,
+    source_prim_path=SOURCE_PRIM_PATH,
+    save_as_path=SAVE_AS_PATH
+)
+```
+
+> **Note**
+> Any USD Relationships on the referenced meshes will be removed. This is because those USD Relationships originally have targets set to prims in the original prim that may no longer be valid and hence cannot be accessed from the new stage. Common examples of USD Relationships that could exist on the meshes are visual materials, physics materials, and filtered collision pairs. Therefore, it is recommended to set these USD Relationships on the meshes' parent Xforms instead of the meshes themselves.
+
+### Full Conversion Utility
+
+The above method can also be run as part of an overall conversion process, which is defined in the utility below. This utility will first insert new parent prims if `create_xforms=True` is specified, and generate a new USD file that is used for referencing. It will then traverse through the asset tree and mark the parent prim of any mesh or primitive type prims as instanceable, along with inserting a reference to the mesh USD stage.
+
+```python
+def convert_asset_instanceable(asset_usd_path, source_prim_path, save_as_path=None, create_xforms=True):
+    """ Makes all mesh/geometry prims instanceable.
+        Can optionally add UsdGeom.Xform prim as parent for all mesh/geometry prims.
+        Makes a copy of the asset USD file, which will be used for referencing.
+        Updates asset file to convert all parent prims of mesh/geometry prims to reference cloned USD file.
+
+        Args:
+            asset_usd_path (str): USD file path for asset
+            source_prim_path (str): USD path of root prim
+            save_as_path (str): USD file path for modified USD stage. Defaults to None, will save in same file.
+            create_xforms (bool): Whether to add new UsdGeom.Xform prims to mesh/geometry prims.
+    """
+
+    if create_xforms:
+        create_parent_xforms(asset_usd_path, source_prim_path, save_as_path)
+        asset_usd_path = save_as_path
+
+    instance_usd_path = ".".join(asset_usd_path.split(".")[:-1]) + "_meshes.usd"
+    omni.client.copy(asset_usd_path, instance_usd_path)
+    omni.usd.get_context().open_stage(asset_usd_path)
+    stage = omni.usd.get_context().get_stage()
+
+    prims = [stage.GetPrimAtPath(source_prim_path)]
+    while len(prims) > 0:
+        prim = prims.pop(0)
+        if prim:
+            if prim.GetTypeName() in ["Mesh", "Capsule", "Sphere", "Box"]:
+                parent_prim = prim.GetParent()
+                if parent_prim and not parent_prim.IsInstance():
+                    parent_prim.GetReferences().AddReference(
+                        assetPath=instance_usd_path, primPath=str(parent_prim.GetPath())
+                    )
+                    parent_prim.SetInstanceable(True)
+                    continue
+
+            children_prims = prim.GetChildren()
+            prims = prims + children_prims
+
+    if save_as_path is None:
+        omni.usd.get_context().save_stage()
+    else:
+        omni.usd.get_context().save_as_stage(save_as_path)
+```
+
+## Summary
+
+This tutorial covered the following topics:
+
+- Requirements for creating instanceable assets
+- Using the URDF and MJCF Importers to create instanceable assets
+- Making existing assets instanceable
+
 
 ---
 
